@@ -256,10 +256,10 @@ pub(super) fn input(app: &mut FigApp, ui: &mut Ui, resp: &egui::Response) -> boo
         let has_zoom = (zoom_delta - 1.0).abs() > 1e-4;
         let has_scroll = scroll != egui::Vec2::ZERO;
         if has_zoom || has_scroll {
+            let anchor_screen = multi_center.unwrap_or(pos);
+            let anchor = app.to_page(anchor_screen);
             if let Ok(ds) = app.session.ds_mut() {
                 if has_zoom {
-                    let anchor_screen = multi_center.unwrap_or(pos);
-                    let anchor = app.to_page(anchor_screen);
                     let z = ds.view.zoom * f64::from(zoom_delta);
                     ds.view.set_zoom_at(z, (anchor.x, anchor.y));
                 }
