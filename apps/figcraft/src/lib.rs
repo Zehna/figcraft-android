@@ -37,6 +37,8 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
             let services = services::Desktop::load_from(None, recovery::Shared::default());
             let mut fig = figcraft_ui_egui::FigApp::new(session, Box::new(services));
             fig.services.set_egui_context(&cc.egui_ctx);
+            fig.set_touch_mode(true);
+            fig.set_safe_area_insets(24.0, 0.0, 24.0, 0.0);
             Ok(Box::new(AndroidShell { fig }))
         }),
     );

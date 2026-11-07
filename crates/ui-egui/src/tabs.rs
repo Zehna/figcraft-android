@@ -111,8 +111,10 @@ fn tab_drop_position(visible: &[(usize, Rect)], from: usize, pointer_x: f32) -> 
 /// open/close/reorder animation and tab closing, pausing the presenter when going Home.
 pub fn tab_bar(app: &mut FigApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
-    egui::Panel::top("tab_bar").exact_size(HEIGHT).frame(egui::Frame::NONE.fill(t.tab_bar)).show(ui, |ui| {
-        let rect = ui.max_rect();
+    let top_inset = app.ui.safe_area.top;
+    egui::Panel::top("tab_bar").exact_size(HEIGHT + top_inset).frame(egui::Frame::NONE.fill(t.tab_bar)).show(ui, |ui| {
+        let max_r = ui.max_rect();
+        let rect = Rect::from_min_max(pos2(max_r.min.x, max_r.min.y + top_inset), max_r.max);
         let buttons_w = if app.ui.title_bar == TitleBar::Custom { window_buttons(app, ui, rect) } else { 0.0 };
         let mut x = rect.min.x + if app.ui.title_bar == TitleBar::Inset { 76.0 } else { 8.0 };
         x += home_tab(app, ui, &t, x, rect);

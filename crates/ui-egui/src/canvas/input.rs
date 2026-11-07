@@ -194,10 +194,23 @@ pub(super) fn input(app: &mut FigApp, ui: &mut Ui, resp: &egui::Response) -> boo
     }
     let ctx = ui.ctx().clone();
     // Two fingers pan as well as pinch (a touch screen has no scroll wheel).
-    let (mods, pan, zoom_delta, hover_pos, space) = ctx.input(|i| {
-        let pan = i.multi_touch().map_or(egui::Vec2::ZERO, |m| m.translation_delta);
-        (i.modifiers, pan, i.zoom_delta(), i.pointer.hover_pos(), i.key_down(egui::Key::Space))
+    let (mut mods, pan, zoom_delta, multi_center, num_touches, hover_pos, space) = ctx.input(|i| {
+        let (pan, center, count) = i.multi_touch().map_or((egui::Vec2::ZERO, None, 0), |m| {
+            (m.translation_delta, Some(m.center_pos), m.num_touches)
+        });
+        (i.modifiers, pan, i.zoom_delta(), center, count, i.pointer.hover_pos(), i.key_down(egui::Key::Space))
     });
+    // Combine virtual modifier puck states
+    if app.ui.puck.is_shift() {
+        mods.shift = true;
+    }
+    if app.ui.puck.is_alt() {
+        mods.alt = true;
+    }
+    if app.ui.puck.is_ctrl() {
+        mods.command = true;
+        mods.ctrl = true;
+    }
     let (wheel, zoom_delta) = wheel_zoom(app, &ctx, zoom_delta, mods.shift);
     let scroll = wheel + pan;
     let editing_text = app.session.ds().map(|d| d.text_edit.is_some()).unwrap_or(false);
@@ -238,21 +251,32 @@ pub(super) fn input(app: &mut FigApp, ui: &mut Ui, resp: &egui::Response) -> boo
         app.ui.pick = None;
     }
     // Zoom (pinch, Cmd/Ctrl+scroll; a plain mouse wheel with Scroll wheel zoom) about the pointer;
-    // other scrolls pan.
+    // other scrolls pan. Simultaneous pan and zoom for multi-touch gestures.
     if resp.hovered() {
-        if (zoom_delta - 1.0).abs() > 1e-4 {
-            let anchor = app.to_page(pos);
+        let has_zoom = (zoom_delta - 1.0).abs() > 1e-4;
+        let has_scroll = scroll != egui::Vec2::ZERO;
+        if has_zoom || has_scroll {
             if let Ok(ds) = app.session.ds_mut() {
-                let z = ds.view.zoom * f64::from(zoom_delta);
-                ds.view.set_zoom_at(z, (anchor.x, anchor.y));
+                if has_zoom {
+                    let anchor_screen = multi_center.unwrap_or(pos);
+                    let anchor = app.to_page(anchor_screen);
+                    let z = ds.view.zoom * f64::from(zoom_delta);
+                    ds.view.set_zoom_at(z, (anchor.x, anchor.y));
+                }
+                if has_scroll {
+                    ds.view.scroll(f64::from(scroll.x), f64::from(scroll.y), mods.shift);
+                }
                 ds.revision += 1;
             }
-        } else if scroll != egui::Vec2::ZERO
-            && let Ok(ds) = app.session.ds_mut()
-        {
-            ds.view.scroll(f64::from(scroll.x), f64::from(scroll.y), mods.shift);
-            ds.revision += 1;
         }
+    }
+    // When multi-touch gesture is active (2+ fingers), cancel any single-touch canvas dragging
+    // and prevent starting any tool drag so pinching doesn't misfire tool interactions.
+    if num_touches >= 2 {
+        if app.canvas.dragging {
+            app.canvas.dragging = false;
+        }
+        return true;
     }
     if zoom_tool(app, ui, resp, pos, mods, editing_text || typing_elsewhere) {
         return true;

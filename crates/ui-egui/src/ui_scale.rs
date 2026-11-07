@@ -9,6 +9,9 @@
 /// The smallest window, in points, the interface is laid out for: the main window's minimum size.
 pub const FIT_POINTS: (f32, f32) = (800.0, 500.0);
 
+/// Smallest window for mobile/narrow touch layout (one side panel at a time).
+pub const MOBILE_FIT_POINTS: (f32, f32) = (320.0, 480.0);
+
 /// The zoom factors egui's own settings window allows.
 const ZOOM_RANGE: (f32, f32) = (0.1, 10.0);
 
@@ -27,12 +30,20 @@ pub struct Plan {
 /// window's size in physical pixels `window_px`. An unknown, zero or not finite value reads as no
 /// information: a size of 1, a system scale of 1 and a window of any size.
 pub fn plan(choice: f64, native: Option<f32>, window_px: Option<(f32, f32)>) -> Plan {
+    plan_touch(choice, native, window_px, false)
+}
+
+/// The plan for `choice` with optional touch scaling support (1.25x default on touch screens,
+/// relaxing desktop bounds to `MOBILE_FIT_POINTS`).
+pub fn plan_touch(choice: f64, native: Option<f32>, window_px: Option<(f32, f32)>, touch_mode: bool) -> Plan {
     let native = native.filter(|n| n.is_finite() && *n > 0.0).unwrap_or(1.0);
-    let want = Some(choice as f32).filter(|c| c.is_finite() && *c > 0.0).unwrap_or(1.0);
+    let base_choice = if touch_mode && (choice - 1.0).abs() < 1e-4 { 1.25 } else { choice };
+    let want = Some(base_choice as f32).filter(|c| c.is_finite() && *c > 0.0).unwrap_or(1.0);
+    let fit_limits = if touch_mode { MOBILE_FIT_POINTS } else { FIT_POINTS };
     // The largest zoom at which the window still holds the smallest layout.
     let fit = window_px
         .filter(|(w, h)| w.is_finite() && h.is_finite() && *w > 0.0 && *h > 0.0)
-        .map(|(w, h)| (w / FIT_POINTS.0).min(h / FIT_POINTS.1) / native);
+        .map(|(w, h)| (w / fit_limits.0).min(h / fit_limits.1) / native);
     // Never below 100 % (or the size asked, when that is smaller): a tiny window doesn't shrink the interface further.
     let zoom = match fit {
         Some(fit) if want > fit => fit.max(want.min(1.0)),
@@ -113,5 +124,22 @@ mod tests {
     fn percentages_round_like_the_menu_shows_them() {
         assert_eq!([percent(0.75), percent(0.9), percent(1.1), percent(1.25), percent(2.0), percent(1.7999)], [75, 90, 110, 125, 200, 180]);
         assert_eq!([percent(f32::NAN), percent(-1.0)], [0, 0]);
+    }
+
+    #[test]
+    fn touch_scaling_defaults_to_125_and_uses_mobile_bounds() {
+        // On a typical phone: 1080 x 2400 px, native scale 2.75 (~392 x 872 points)
+        let phone_px = Some((1080.0, 2400.0));
+        let native = Some(2.75);
+
+        // Standard desktop plan would clamp choice > 1.0 because 392 < 800 (FIT_POINTS)
+        let desk = plan(1.25, native, phone_px);
+        assert_eq!(desk.zoom, 1.0);
+        assert!(desk.limited);
+
+        // Touch plan allows 1.25x scaling because 392 > 320 (MOBILE_FIT_POINTS)
+        let touch = plan_touch(1.0, native, phone_px, true);
+        assert_eq!(touch.zoom, 1.25);
+        assert!(!touch.limited);
     }
 }

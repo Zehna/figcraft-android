@@ -180,7 +180,11 @@ pub(crate) fn scrub(ui: &Ui, id: Id, response: &Response, value: Option<f64>, st
             // from the window this frame, the pointer's last position still counts (a move and
             // the leaving in one frame); None once egui has no position for it.
             let rise = p.hover_pos().or(p.interact_pos()).zip(p.press_origin()).map(|(at, from)| f64::from(from.y - at.y));
-            (f64::from(if at_edge { raw } else { moved }), rise, i.modifiers.shift, i.modifiers.alt && fine_on_alt)
+            let puck_shift = ui.data(|d| d.get_temp::<bool>(Id::unique("puck_shift"))).unwrap_or(false);
+            let puck_alt = ui.data(|d| d.get_temp::<bool>(Id::unique("puck_alt"))).unwrap_or(false);
+            let shift_now = i.modifiers.shift || puck_shift;
+            let alt_now = (i.modifiers.alt || puck_alt) && fine_on_alt;
+            (f64::from(if at_edge { raw } else { moved }), rise, shift_now, alt_now)
         });
         // Gone from the window (egui says so, the button still down), the pointer keeps the speed
         // it had rather than falling back to the usual one.
@@ -300,10 +304,14 @@ fn number_field_impl(
         return (None, bound_field(ui, id, lead, rect, name));
     }
     let mut out: Option<Edit> = None;
+    let is_touch = ui.data(|d| d.get_temp::<bool>(Id::unique("touch_mode"))).unwrap_or(false) || cfg!(target_os = "android");
     let lead_w = match lead {
         Lead::None | Lead::Named(_) => 6.0,
-        Lead::Text(s) => text_lead_width(ui, s, width),
-        Lead::Icon(..) => 24.0,
+        Lead::Text(s) => {
+            let base = text_lead_width(ui, s, width);
+            if is_touch { base.max(28.0) } else { base }
+        }
+        Lead::Icon(..) => if is_touch { 28.0 } else { 24.0 },
     };
     let lead_rect = Rect::from_min_size(rect.min, vec2(lead_w, FIELD_H));
     let edit_rect = Rect::from_min_max(pos2(rect.min.x + lead_w, rect.min.y), rect.max);
@@ -316,7 +324,8 @@ fn number_field_impl(
     // area's; egui assigns a press by the frame before it, so Alt is held over the field before
     // the press, as a hand does. Alt as the drag begins is what makes it a scrub.
     let field_id = id.with("field");
-    let alt_now = ui.input(|i| i.modifiers.alt);
+    let puck_alt = ui.data(|d| d.get_temp::<bool>(Id::unique("puck_alt"))).unwrap_or(false);
+    let alt_now = ui.input(|i| i.modifiers.alt) || puck_alt;
     let scrubbing_id = id.with("altscrub");
     let scrubbing = ui.data(|d| d.get_temp::<bool>(scrubbing_id)).unwrap_or(false);
     let field_sense = if editing.is_none() && (alt_now || scrubbing) { Sense::click_and_drag() } else { Sense::click() };

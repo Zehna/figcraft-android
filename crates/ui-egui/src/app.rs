@@ -64,6 +64,17 @@ impl FigApp {
         }
     }
 
+    /// Set screen safe area insets (points): top notch/status bar, right, bottom nav, left.
+    pub fn set_safe_area_insets(&mut self, top: f32, right: f32, bottom: f32, left: f32) {
+        self.ui.safe_area = crate::touch::SafeAreaInsets::new(top, right, bottom, left);
+    }
+
+    /// Set touch mode (enabling touch scaling 1.25x and virtual modifier puck).
+    pub fn set_touch_mode(&mut self, enabled: bool) {
+        self.ui.touch_mode = enabled;
+        self.ui.puck.enabled = enabled;
+    }
+
     /// UI-phase setup that needs a real current `Ui`: fonts/language/theme, interface zoom and the
     /// render worker. Runs once per frame (pass 0) for the main window, and once per frame for
     /// every child window (`windows::draw`), never on a logic-only tick.
@@ -121,7 +132,8 @@ impl FigApp {
         {
             let window_px = ctx.content_rect().size() * ctx.pixels_per_point();
             let size = if cfg!(target_arch = "wasm32") { 1.0 } else { self.session.prefs.ui_scale };
-            let plan = ui_scale::plan(size, ctx.native_pixels_per_point(), Some((window_px.x, window_px.y)));
+            let touch = self.ui.touch_mode || cfg!(target_os = "android");
+            let plan = ui_scale::plan_touch(size, ctx.native_pixels_per_point(), Some((window_px.x, window_px.y)), touch);
             if ctx.viewport_id() == egui::ViewportId::ROOT {
                 ctx.set_zoom_factor(plan.zoom);
             }
@@ -218,6 +230,27 @@ impl FigApp {
     /// One frame of the window drawing now.
     pub(crate) fn frame(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        self.ui.puck.begin_frame();
+        if self.ui.puck.is_shift() {
+            self.ui.held.shift = true;
+        }
+        if self.ui.puck.is_alt() {
+            self.ui.held.alt = true;
+        }
+        if self.ui.puck.is_ctrl() {
+            self.ui.held.command = true;
+            self.ui.held.ctrl = true;
+        }
+        let touch_active = self.ui.touch_mode || cfg!(target_os = "android");
+        let puck_s = self.ui.puck.is_shift();
+        let puck_a = self.ui.puck.is_alt();
+        let puck_c = self.ui.puck.is_ctrl();
+        ctx.data_mut(|d| {
+            d.insert_temp(egui::Id::unique("touch_mode"), touch_active);
+            d.insert_temp(egui::Id::unique("puck_shift"), puck_s);
+            d.insert_temp(egui::Id::unique("puck_alt"), puck_a);
+            d.insert_temp(egui::Id::unique("puck_ctrl"), puck_c);
+        });
         // Bind this input batch before controls or pointer input can replace its composing
         // target/caret. Outgoing IME receipts run after mutation and cannot authorize it.
         let ime_input = shortcuts::ImeInputBaseline::capture(self);
@@ -382,12 +415,12 @@ impl FigApp {
         if narrow {
             // In the strip beside the open panel; with none open, on the Design panel's side.
             let at_right = (mobile == Some(MobilePanel::Left)) != mirrored;
-            let x = if at_right { ctx.content_rect().max.x - MOBILE_STRIP + 4.0 } else { ctx.content_rect().min.x + 4.0 };
-            self.mobile_buttons(&ctx, egui::pos2(x, rows.min + 8.0));
+            let x = if at_right { ctx.content_rect().max.x - MOBILE_STRIP + 4.0 - self.ui.safe_area.right } else { ctx.content_rect().min.x + 4.0 + self.ui.safe_area.left };
+            self.mobile_buttons(&ctx, egui::pos2(x, rows.min + 8.0 + self.ui.safe_area.top));
         } else if minimized {
             // Where the navigation bar was: on the right in a mirrored window.
-            let x = if mirrored { ctx.content_rect().max.x - 40.0 } else { ctx.content_rect().min.x + 8.0 };
-            self.expand_button(&ctx, egui::pos2(x, rows.min + 8.0));
+            let x = if mirrored { ctx.content_rect().max.x - 40.0 - self.ui.safe_area.right } else { ctx.content_rect().min.x + 8.0 + self.ui.safe_area.left };
+            self.expand_button(&ctx, egui::pos2(x, rows.min + 8.0 + self.ui.safe_area.top));
         }
         // The panels' edges, over the canvas and the panels (drawn after them: they take the press).
         for (name, x, shown, grows) in edges {

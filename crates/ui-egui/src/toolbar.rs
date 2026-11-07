@@ -157,7 +157,7 @@ fn main_width(groups: &[Group], board: bool) -> f32 {
 fn main_toolbar(app: &mut FigApp, ui: &mut Ui, canvas: Rect, t: &Tokens, board: bool) {
     let groups = if board { BOARD_GROUPS } else { GROUPS };
     let width = main_width(groups, board);
-    let rect = pill(ui, &mut app.ui.nav, canvas, width, t);
+    let rect = pill(ui, &mut app.ui.nav, canvas, width, t, app.ui.safe_area.bottom);
     let cy = rect.center().y;
     let scroll = pill_scroll(ui, rect, width);
     let outer_clip = ui.clip_rect();
@@ -373,7 +373,7 @@ fn view_only_toolbar(app: &mut FigApp, ui: &mut Ui, why: &'static str) {
     let text = ui.painter().layout_no_wrap(label.to_string(), crate::theme::semibold(11.5), t.text);
     let badge_w = 12.0 + 14.0 + 6.0 + text.size().x + 12.0;
     let width = PAD * 2.0 + tools.len() as f32 * (TOOL_CELL + GAP) + DIVIDER + GAP + badge_w;
-    let rect = pill(ui, &mut app.ui.nav, app.canvas.rect, width, &t);
+    let rect = pill(ui, &mut app.ui.nav, app.canvas.rect, width, &t, app.ui.safe_area.bottom);
     let cy = rect.center().y;
     let mut x = rect.min.x + PAD;
     for &(tool, icon) in tools {
@@ -402,7 +402,7 @@ fn edit_toolbar(app: &mut FigApp, ui: &mut Ui, current: VTool) {
     let t = Tokens::get(ui.ctx());
     let canvas = app.canvas.rect;
     let width = VTool::ALL.len() as f32 * (TOOL_CELL + GAP) + PAD * 2.0 + DIVIDER + GAP + DONE_W;
-    let rect = pill(ui, &mut app.ui.nav, canvas, width, &t);
+    let rect = pill(ui, &mut app.ui.nav, canvas, width, &t, app.ui.safe_area.bottom);
     let cy = rect.center().y;
     let mut x = rect.min.x + PAD;
     // Holding Cmd with the Move tool bends: show it.
@@ -454,7 +454,7 @@ fn builder_toolbar(app: &mut FigApp, ui: &mut Ui) {
     };
     let galley = ui.painter().layout_no_wrap(hint, regular(12.0), t.text_secondary);
     let width = PAD * 2.0 + 2.0 * (TOOL_CELL + GAP) + 2.0 * (DIVIDER + GAP) + galley.size().x + GAP + DONE_W;
-    let rect = pill(ui, &mut app.ui.nav, app.canvas.rect, width, &t);
+    let rect = pill(ui, &mut app.ui.nav, app.canvas.rect, width, &t, app.ui.safe_area.bottom);
     let cy = rect.center().y;
     let mut x = rect.min.x + PAD;
     for (mode, icon, tip) in [("merge", Icon::ShapeBuilder, tr("Merge regions")), ("remove", Icon::ShapeBuilderRemove, tr("Remove regions"))] {
@@ -482,14 +482,19 @@ fn builder_toolbar(app: &mut FigApp, ui: &mut Ui) {
 /// Where a toolbar pill `width` wide sits: centred 12 px above the canvas's bottom edge.
 /// (Never wider than the canvas less a margin: on a phone the main toolbar scrolls inside it.)
 pub(crate) fn pill_rect(canvas: Rect, width: f32) -> Rect {
+    pill_rect_with_inset(canvas, width, 0.0)
+}
+
+/// Where a toolbar pill `width` wide sits, adjusted for safe area bottom insets.
+pub(crate) fn pill_rect_with_inset(canvas: Rect, width: f32, bottom_inset: f32) -> Rect {
     let width = width.min((canvas.width() - 16.0).max(0.0));
-    Rect::from_center_size(pos2(canvas.center().x, canvas.max.y - 12.0 - 24.0), vec2(width, 48.0))
+    Rect::from_center_size(pos2(canvas.center().x, canvas.max.y - 12.0 - 24.0 - bottom_inset), vec2(width, 48.0))
 }
 
 /// The floating pill (shadow, panel, border) `width` wide at the bottom centre of the canvas: the
 /// toolbar region keyboard navigation moves through.
-fn pill(ui: &Ui, nav: &mut Nav, canvas: Rect, width: f32, t: &Tokens) -> Rect {
-    let rect = pill_rect(canvas, width);
+fn pill(ui: &Ui, nav: &mut Nav, canvas: Rect, width: f32, t: &Tokens, bottom_inset: f32) -> Rect {
+    let rect = pill_rect_with_inset(canvas, width, bottom_inset);
     // The pill takes the press and the drag over it: its buttons sense clicks only, and egui gives
     // a drag the canvas under them would sense to the canvas, so the pen placed an anchor there.
     // Not focusable: the keyboard walks the buttons, not the pill.

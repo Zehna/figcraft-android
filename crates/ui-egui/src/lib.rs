@@ -32,6 +32,7 @@ pub mod shortcuts;
 pub mod tabs;
 pub mod theme;
 pub mod toolbar;
+pub mod touch;
 pub mod ui_scale;
 pub mod widgets;
 pub mod windows;
@@ -573,6 +574,12 @@ pub struct UiState {
     pub mirrored: bool,
     pub comments: comments::CommentUi,
     pub versions: versions::VersionUi,
+    /// Whether touch mode adaptations (1.25x scaling, touch targets) are active.
+    pub touch_mode: bool,
+    /// Safe area insets (points): top notch/status bar, right, bottom nav, left.
+    pub safe_area: touch::SafeAreaInsets,
+    /// Virtual modifier puck for touch screens (Shift, Alt, Cmd).
+    pub puck: touch::ModifierPuck,
     /// The branch review dialog, while open.
     pub branch_review: Option<branch_ui::ReviewView>,
     /// Dev Mode: annotations on the canvas and the ready-for-dev list.
@@ -725,6 +732,9 @@ impl Default for UiState {
             mirrored: false,
             comments: comments::CommentUi::default(),
             versions: versions::VersionUi::default(),
+            touch_mode: cfg!(target_os = "android"),
+            safe_area: touch::SafeAreaInsets::default(),
+            puck: touch::ModifierPuck::default(),
             branch_review: None,
             dev: dev_mode::DevUi::default(),
 
@@ -845,3 +855,6 @@ mod type_settings_tests;
 
 #[cfg(test)]
 mod typography_scrub_tests;
+
+#[cfg(test)]
+mod touch_tests;
