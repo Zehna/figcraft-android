@@ -21,19 +21,11 @@ jobs:
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
-      - name: Checkout repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Checkout craft-fonts
-        uses: actions/checkout@v4
-        with:
-          repository: storytold/craft-fonts
-          path: craft-fonts
-          ref: 37827adc41fd165f9a9234ac40f94dbad353aa69
-
-      - name: Position craft-fonts next to repository
-        run: |
-          mv craft-fonts ../craft-fonts
+      - name: Clone craft-fonts
+        run: git clone --depth 1 https://github.com/storytold/craft-fonts.git ../craft-fonts
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
