@@ -134,6 +134,10 @@ impl eframe::App for App {
     }
 }
 
+#[cfg(target_os = "android")]
+fn main() {}
+
+#[cfg(not(target_os = "android"))]
 fn main() -> eframe::Result {
     // Windows: the update helper is a copy of this program started with `--finish-update`.
     #[cfg(windows)]
@@ -323,20 +327,18 @@ fn opens_new_file(first_run: bool, start_on_home: bool, control: bool) -> bool {
 /// (`app` / `system`). macOS keeps its inset traffic lights unchanged (craft-window returns the
 /// desktop frame there); Windows keeps the system frame; on Linux the compositor/window manager
 /// decides (KDE/Sway/Hyprland/COSMIC and X11 keep the native frame, GNOME gets the custom one).
+#[cfg(not(target_os = "android"))]
 fn desktop_title_bar() -> figcraft_ui_egui::TitleBar {
     let choice = craft_window::Choice::probe(craft_window::Prefix::new("FIGCRAFT"));
     title_bar_for(choice.into_frame())
 }
 
-/// Map craft-window's [`craft_window::Frame`] onto FigCraft's own [`figcraft_ui_egui::TitleBar`].
-///
-/// `Frame::App` means the app draws its own frame — FigCraft's custom title bar. `Frame::Desktop`
-/// means the desktop draws it, but FigCraft keeps each platform's existing look there:
-/// - macOS: the inset title bar with its traffic lights (`TitleBar::Inset`), unchanged.
-/// - Windows: FigCraft's own custom title bar (`TitleBar::Custom`), unchanged — Windows never used
-///   the plain native frame, and craft-window returning `Desktop` on Windows must not change that.
-/// - Linux and the BSDs: the compositor's native frame (`TitleBar::Native`). This is the only
-///   behaviour change: KDE and the other server-side-decoration compositors now keep their frame.
+#[cfg(target_os = "android")]
+fn desktop_title_bar() -> figcraft_ui_egui::TitleBar {
+    figcraft_ui_egui::TitleBar::Native
+}
+
+#[cfg(not(target_os = "android"))]
 fn title_bar_for(frame: craft_window::Frame) -> figcraft_ui_egui::TitleBar {
     use figcraft_ui_egui::TitleBar;
     match frame {
@@ -358,7 +360,7 @@ fn window_chrome(viewport: egui::ViewportBuilder, title_bar: figcraft_ui_egui::T
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_os = "android")))]
 mod title_bar_tests {
     use figcraft_ui_egui::TitleBar;
 

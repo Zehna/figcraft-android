@@ -10,6 +10,7 @@ use figcraft_ui_egui::{DialogFuture, FigApp, Services};
 use serde_json::{Value, json};
 
 pub struct Desktop {
+    #[cfg(not(target_os = "android"))]
     clipboard: Option<arboard::Clipboard>,
     egui_ctx: Option<egui::Context>,
     /// Where the preferences live ([`config_dir`]).
@@ -103,6 +104,7 @@ impl Desktop {
         std::thread::spawn(move || flag.store(system_reduce_motion(), Ordering::Relaxed));
         let dark = Arc::new(AtomicU8::new(DARK_UNKNOWN));
         Self {
+            #[cfg(not(target_os = "android"))]
             clipboard: arboard::Clipboard::new().ok(),
             egui_ctx: None,
             dir,
@@ -119,14 +121,14 @@ impl Desktop {
     /// answers instead, read once and then watched in the background, calling `wake` when it
     /// changes (an idle window draws no frames). Elsewhere this does nothing.
     pub fn follow_system_dark(&self, wake: impl Fn() + Send + 'static) {
-        #[cfg(all(unix, not(target_os = "macos")))]
+        #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
         if let Err(e) = std::thread::Builder::new().name("figcraft-theme".into()).spawn({
             let dark = self.dark.clone();
             move || watch_system_dark(&dark, &wake)
         }) {
             log::info!("colour scheme: can't start the watcher: {e}");
         }
-        #[cfg(not(all(unix, not(target_os = "macos"))))]
+        #[cfg(not(all(unix, not(any(target_os = "macos", target_os = "android")))))]
         let _ = wake;
     }
 }
@@ -216,14 +218,14 @@ const DARK_LIGHT: u8 = 2;
 
 #[cfg(all(unix, not(target_os = "macos")))]
 const PORTAL: &str = "org.freedesktop.portal.Desktop";
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 const PORTAL_PATH: &str = "/org/freedesktop/portal/desktop";
 
 /// The desktop's colour scheme through the freedesktop settings portal
 /// (`org.freedesktop.appearance` / `color-scheme`: 1 dark, 2 light, 0 no preference, which is
 /// light), read once and then watched for changes, each one calling `wake`. Without a session bus
 /// or a portal the scheme stays unknown and the UI keeps its light fallback.
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 fn watch_system_dark(dark: &AtomicU8, wake: &dyn Fn()) {
     use zbus::zvariant::Value;
     const SETTINGS: &str = "org.freedesktop.portal.Settings";
@@ -295,7 +297,12 @@ fn reveal(path: &Path) -> std::io::Result<()> {
 /// `/run/user/…/doc/<id>/<name>`, and opening that folder opens the document itself, in whatever
 /// app takes its type (#1701).
 fn show_in_file_manager(path: &Path) -> std::io::Result<()> {
-    #[cfg(all(unix, not(target_os = "macos")))]
+    #[cfg(target_os = "android")]
+    {
+        let _ = path;
+        return Ok(());
+    }
+    #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
     if shown_by_portal(path, open_directory) {
         return Ok(());
     }
@@ -313,7 +320,7 @@ fn show_in_file_manager(path: &Path) -> std::io::Result<()> {
         c.arg(arg);
         c
     };
-    #[cfg(not(any(target_os = "macos", windows)))]
+    #[cfg(not(any(target_os = "macos", target_os = "android", windows)))]
     let mut command = {
         let mut c = std::process::Command::new("xdg-open");
         c.arg(path.parent().unwrap_or(path));
@@ -324,7 +331,7 @@ fn show_in_file_manager(path: &Path) -> std::io::Result<()> {
 }
 
 /// Whether `portal`, handed `path` itself opened (not its folder), took it.
-#[cfg(any(test, all(unix, not(target_os = "macos"))))]
+#[cfg(any(test, all(unix, not(any(target_os = "macos", target_os = "android")))))]
 fn shown_by_portal(path: &Path, portal: impl FnOnce(&std::fs::File) -> Result<(), String>) -> bool {
     let shown = std::fs::File::open(path).map_err(|e| e.to_string()).and_then(|f| portal(&f));
     if let Err(e) = &shown {
@@ -335,7 +342,7 @@ fn shown_by_portal(path: &Path, portal: impl FnOnce(&std::fs::File) -> Result<()
 
 /// The portal's `OpenDirectory` (version 3 of `org.freedesktop.portal.OpenURI`): the file manager
 /// opens on the folder holding `file`, with it selected.
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 fn open_directory(file: &std::fs::File) -> Result<(), String> {
     use zbus::zvariant::{Fd, Value};
     const OPEN_URI: &str = "org.freedesktop.portal.OpenURI";
@@ -387,6 +394,7 @@ fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     f.write_all(bytes)
 }
 
+#[cfg(not(target_os = "android"))]
 thread_local! {
     /// While the main window draws: a dialog parented to it, so a dialog opened from it stays in
     /// front of it (a sheet on macOS). eframe gives other windows no handle: theirs have no parent.
@@ -394,6 +402,7 @@ thread_local! {
 }
 
 /// Run the main window's frame `f` with the dialogs it opens parented to `frame`'s window.
+#[cfg(not(target_os = "android"))]
 pub fn parented<R>(frame: &eframe::Frame, f: impl FnOnce() -> R) -> R {
     PARENT.with(|p| p.replace(Some(rfd::AsyncFileDialog::new().set_parent(frame))));
     let r = f();
@@ -401,12 +410,17 @@ pub fn parented<R>(frame: &eframe::Frame, f: impl FnOnce() -> R) -> R {
     r
 }
 
-/// A dialog with `title`, parented to the main window while it draws.
+#[cfg(target_os = "android")]
+pub fn parented<R>(_frame: &eframe::Frame, f: impl FnOnce() -> R) -> R {
+    f()
+}
+
+#[cfg(not(target_os = "android"))]
 fn dialog(title: &str) -> rfd::AsyncFileDialog {
     PARENT.with(|p| p.borrow().clone()).unwrap_or_default().set_title(title)
 }
 
-/// The dialog opens now; its future gives the path picked.
+#[cfg(not(target_os = "android"))]
 fn picked(pick: impl Future<Output = Option<rfd::FileHandle>> + 'static) -> DialogFuture {
     Box::pin(async move { pick.await.map(|f| f.path().to_path_buf()) })
 }
@@ -415,13 +429,13 @@ fn picked(pick: impl Future<Output = Option<rfd::FileHandle>> + 'static) -> Dial
 const MACOS_PASTEBOARD_PNG: &str = "public.png";
 
 /// How long a clipboard read may wait on the app that copied (Linux and the BSDs).
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 const CLIPBOARD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// Read the clipboard. On Linux and the BSDs the read runs on a helper thread with its own handle
 /// and gives up after [`CLIPBOARD_TIMEOUT`]: a Wayland read waits on the app that copied with no
 /// timeout of its own, so an app that hangs must not hang the window too.
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 fn read_clipboard<T: Send + 'static>(_: &mut arboard::Clipboard, read: fn(&mut arboard::Clipboard) -> Option<T>) -> Option<T> {
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
@@ -431,7 +445,7 @@ fn read_clipboard<T: Send + 'static>(_: &mut arboard::Clipboard, read: fn(&mut a
 }
 
 /// Read the clipboard (the system's own reads don't wait on the app that copied).
-#[cfg(not(all(unix, not(target_os = "macos"))))]
+#[cfg(all(not(target_os = "android"), not(all(unix, not(target_os = "macos")))))]
 fn read_clipboard<T>(c: &mut arboard::Clipboard, read: fn(&mut arboard::Clipboard) -> Option<T>) -> Option<T> {
     read(c)
 }
@@ -457,6 +471,7 @@ pub(crate) fn start_folder(last: Option<PathBuf>) -> Option<PathBuf> {
     last.filter(|f| f.is_dir())
 }
 
+#[cfg(not(target_os = "android"))]
 impl Desktop {
     /// A dialog that starts in the last folder used. The Linux portal does not remember it between
     /// dialogs as macOS and Windows do.
@@ -481,10 +496,17 @@ pub(crate) fn remembering(last: Arc<Mutex<Option<PathBuf>>>, pick: DialogFuture,
 }
 
 impl Services for Desktop {
+    #[cfg(not(target_os = "android"))]
     fn pick_open(&mut self, title: &str, exts: &[&str]) -> DialogFuture {
         let pick = picked(self.dialog_in_last_folder(title).add_filter("Supported files", exts).pick_file());
         remembering(self.last_folder.clone(), pick, false)
     }
+    #[cfg(target_os = "android")]
+    fn pick_open(&mut self, _title: &str, _exts: &[&str]) -> DialogFuture {
+        Box::pin(std::future::ready(None))
+    }
+
+    #[cfg(not(target_os = "android"))]
     fn pick_save(&mut self, title: &str, name: &str, exts: &[&str]) -> DialogFuture {
         let mut dialog = self.dialog_in_last_folder(title).set_file_name(name);
         for (label, extensions) in save_filters(exts) {
@@ -493,10 +515,21 @@ impl Services for Desktop {
         let pick = picked(dialog.save_file());
         remembering(self.last_folder.clone(), pick, false)
     }
+    #[cfg(target_os = "android")]
+    fn pick_save(&mut self, _title: &str, _name: &str, _exts: &[&str]) -> DialogFuture {
+        Box::pin(std::future::ready(None))
+    }
+
+    #[cfg(not(target_os = "android"))]
     fn pick_folder(&mut self, title: &str) -> DialogFuture {
         let pick = picked(self.dialog_in_last_folder(title).pick_folder());
         remembering(self.last_folder.clone(), pick, true)
     }
+    #[cfg(target_os = "android")]
+    fn pick_folder(&mut self, _title: &str) -> DialogFuture {
+        Box::pin(std::future::ready(None))
+    }
+
     fn clipboard_set_text(&mut self, s: &str) {
         if let Some(ctx) = &self.egui_ctx {
             ctx.copy_text(s.to_string());
@@ -505,17 +538,35 @@ impl Services for Desktop {
     fn set_egui_context(&mut self, ctx: &egui::Context) {
         self.egui_ctx = Some(ctx.clone());
     }
+
+    #[cfg(not(target_os = "android"))]
     fn clipboard_get_text(&mut self) -> Option<String> {
         read_clipboard(self.clipboard.as_mut()?, |c| c.get_text().ok())
     }
+    #[cfg(target_os = "android")]
+    fn clipboard_get_text(&mut self) -> Option<String> {
+        None
+    }
+
+    #[cfg(not(target_os = "android"))]
     fn clipboard_get_html(&mut self) -> Option<String> {
         read_clipboard(self.clipboard.as_mut()?, |c| c.get().html().ok())
     }
+    #[cfg(target_os = "android")]
+    fn clipboard_get_html(&mut self) -> Option<String> {
+        None
+    }
+
+    #[cfg(not(target_os = "android"))]
     fn clipboard_set_png(&mut self, w: u32, h: u32, rgba: &[u8]) {
         if let Some(c) = self.clipboard.as_mut() {
             let _ = c.set_image(arboard::ImageData { width: w as usize, height: h as usize, bytes: std::borrow::Cow::Borrowed(rgba) });
         }
     }
+    #[cfg(target_os = "android")]
+    fn clipboard_set_png(&mut self, _w: u32, _h: u32, _rgba: &[u8]) {}
+
+    #[cfg(not(target_os = "android"))]
     fn clipboard_get_image(&mut self) -> Option<(u32, u32, Vec<u8>)> {
         let img = read_clipboard(self.clipboard.as_mut()?, |c| c.get_image().ok())?;
         let (w, h) = (u32::try_from(img.width).ok()?, u32::try_from(img.height).ok()?);
@@ -524,6 +575,10 @@ impl Services for Desktop {
             return None;
         }
         Some((w, h, img.bytes.into_owned()))
+    }
+    #[cfg(target_os = "android")]
+    fn clipboard_get_image(&mut self) -> Option<(u32, u32, Vec<u8>)> {
+        None
     }
     #[cfg(target_os = "macos")]
     fn clipboard_get_png(&mut self) -> Option<Vec<u8>> {

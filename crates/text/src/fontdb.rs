@@ -1305,6 +1305,10 @@ fn system_font_dirs() -> Vec<std::path::PathBuf> {
         // and those fontconfig names (NixOS and Guix keep fonts only there).
         v.extend(craft_font_catalog::font_dirs(&craft_font_catalog::FontEnv::from_process()));
     }
+    #[cfg(target_os = "android")]
+    {
+        v.push(std::path::PathBuf::from("/system/fonts"));
+    }
     // Fonts any Craft app downloaded into the suite's font store (a download being installed is a
     // `.part` file, which the walk skips).
     #[cfg(not(target_arch = "wasm32"))]
