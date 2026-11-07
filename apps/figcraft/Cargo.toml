@@ -10,9 +10,6 @@ default-run = "figcraft"
 [lints]
 workspace = true
 
-[lints.rust]
-unsafe_code = "allow"
-
 [lib]
 crate-type = ["cdylib", "rlib"]
 path = "src/lib.rs"
