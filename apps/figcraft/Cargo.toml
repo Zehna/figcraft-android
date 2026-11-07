@@ -7,8 +7,22 @@ publish = false
 description = "FigCraft desktop app"
 default-run = "figcraft"
 
-[lints]
-workspace = true
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+cognitive_complexity = "deny"
+too_many_arguments = "deny"
+wildcard_imports = "deny"
+dbg_macro = "warn"
+needless_range_loop = "allow"
+chunks_exact_to_as_chunks = "allow"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+unreachable = "deny"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

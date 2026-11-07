@@ -1,5 +1,6 @@
 //! Desktop services: native file dialogs, clipboard, URLs, persisted preferences.
 
+#[cfg(not(target_os = "android"))]
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
@@ -300,34 +301,37 @@ fn show_in_file_manager(path: &Path) -> std::io::Result<()> {
     #[cfg(target_os = "android")]
     {
         let _ = path;
-        return Ok(());
+        Ok(())
     }
-    #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-    if shown_by_portal(path, open_directory) {
-        return Ok(());
+    #[cfg(not(target_os = "android"))]
+    {
+        #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+        if shown_by_portal(path, open_directory) {
+            return Ok(());
+        }
+        #[cfg(target_os = "macos")]
+        let mut command = {
+            let mut c = std::process::Command::new("open");
+            c.arg("-R").arg(path);
+            c
+        };
+        #[cfg(windows)]
+        let mut command = {
+            let mut arg = std::ffi::OsString::from("/select,");
+            arg.push(path);
+            let mut c = std::process::Command::new("explorer");
+            c.arg(arg);
+            c
+        };
+        #[cfg(not(any(target_os = "macos", target_os = "android", windows)))]
+        let mut command = {
+            let mut c = std::process::Command::new("xdg-open");
+            c.arg(path.parent().unwrap_or(path));
+            c
+        };
+        // Waited for so it leaves no zombie.
+        command.spawn()?.wait().map(|_| ())
     }
-    #[cfg(target_os = "macos")]
-    let mut command = {
-        let mut c = std::process::Command::new("open");
-        c.arg("-R").arg(path);
-        c
-    };
-    #[cfg(windows)]
-    let mut command = {
-        let mut arg = std::ffi::OsString::from("/select,");
-        arg.push(path);
-        let mut c = std::process::Command::new("explorer");
-        c.arg(arg);
-        c
-    };
-    #[cfg(not(any(target_os = "macos", target_os = "android", windows)))]
-    let mut command = {
-        let mut c = std::process::Command::new("xdg-open");
-        c.arg(path.parent().unwrap_or(path));
-        c
-    };
-    // Waited for so it leaves no zombie.
-    command.spawn()?.wait().map(|_| ())
 }
 
 /// Whether `portal`, handed `path` itself opened (not its folder), took it.

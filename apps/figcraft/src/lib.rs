@@ -14,7 +14,6 @@ pub mod startup;
 pub mod apple_events;
 
 #[cfg(target_os = "android")]
-#[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 fn android_main(app: winit::platform::android::activity::AndroidApp) {
     android_logger::init_once(
