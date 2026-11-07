@@ -21,6 +21,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Checkout craft-fonts
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/craft-fonts
+          path: craft-fonts
+          ref: 37827adc41fd165f9a9234ac40f94dbad353aa69
+
+      - name: Position craft-fonts next to repository
+        run: |
+          mv craft-fonts ../craft-fonts
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
